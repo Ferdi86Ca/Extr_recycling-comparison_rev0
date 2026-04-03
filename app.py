@@ -2,112 +2,94 @@ import streamlit as st
 import plotly.graph_objects as go
 import pandas as pd
 
-# --- 1. DIZIONARIO TRADUZIONI ---
-lang_dict = {
-    "Italiano": {
-        "title": "Recycling ROI Advisor: Monovite vs Bivite",
-        "tech_comp": "📊 Dati Tecnici e Consumi",
-        "fin_comp": "💰 Conto Economico e Payback",
-        "res_title": "🏁 Analisi del Rientro",
-        "line_a": "Monovite (Standard)",
-        "line_b": "Bivite (High Efficiency)",
-        "market_settings": "Parametri di Business"
-    }
+# --- 1. CONFIGURAZIONE E TRADUZIONI ---
+st.set_page_config(page_title="Twin Screw Advantage", layout="wide")
+t = {
+    "title": "Analisi Efficienza: Il Vantaggio Bivite",
+    "opex_chart": "Confronto Costi Operativi Annuali (OPEX)",
+    "extra_invest": "Recupero dell'Extra-Investimento Bivite",
+    "saving_ann": "Risparmio Energetico Annuo",
+    "payback_extra": "Payback dell'Extra-CAPEX"
 }
 
-st.set_page_config(page_title="Recycling ROI Tool", layout="wide")
-t = lang_dict["Italiano"]
-
-# --- 2. SIDEBAR: BUSINESS CASE ---
-st.sidebar.header(f"🌍 {t['market_settings']}")
+# --- 2. SIDEBAR PARAMETERS ---
+st.sidebar.header("🌍 Parametri di Mercato")
 c_waste = st.sidebar.number_input("Costo Acquisto Rifiuto (€/kg)", value=0.55)
 p_sell = st.sidebar.number_input("Prezzo Vendita Granulo (€/kg)", value=1.05)
-process_loss = st.sidebar.slider("Perdita di Processo/Scarto (%)", 0, 25, 12) / 100
-c_disposal = st.sidebar.number_input("Costo Smaltimento Scarto (€/kg)", value=0.15)
-
-st.sidebar.markdown("---")
-fixed_costs_yr = st.sidebar.number_input("Costi Fissi Annui (Staff, Affitto, etc. €)", value=180000)
-tax_rate = st.sidebar.slider("Aliquota Tasse (%)", 0, 50, 24) / 100
+process_loss = st.sidebar.slider("Perdita di Processo (%)", 0, 25, 12) / 100
 c_ene = st.sidebar.number_input("Costo Energia (€/kWh)", value=0.22)
-h_an = st.sidebar.number_input("Ore di Lavoro Annue", value=7000)
+h_an = st.sidebar.number_input("Ore/Anno", value=7000)
 
 # --- 3. INPUT COMPARISON ---
-p_shared = st.number_input("Input Materiale Orario (kg/h)", value=500)
-o_shared = st.slider("Efficienza Impianto (OEE %)", 50, 100, 85)
+st.header(t["title"])
+p_shared = st.number_input("Portata Oraria (kg/h)", value=500)
+o_shared = st.slider("Efficienza OEE (%)", 50, 100, 85)
 
 col1, col2 = st.columns(2)
 with col1:
-    st.subheader(f"🔄 {t['line_a']}")
-    # CAPEX Variabile con default a 400k
-    ca = st.number_input("CAPEX Monovite (€)", value=400000, step=10000)
-    seca = st.number_input("SEC Monovite (kWh/kg)", value=0.35, format="%.2f")
-
+    st.subheader("🔄 Monovite")
+    ca = st.number_input("CAPEX Monovite (€)", value=400000)
+    seca = st.number_input("SEC Monovite (kWh/kg)", value=0.35)
 with col2:
-    st.subheader(f"⚡ {t['line_b']}")
-    # CAPEX Variabile con default a 600k
-    cb = st.number_input("CAPEX Bivite (€)", value=600000, step=10000)
-    secb = st.number_input("SEC Bivite (kWh/kg)", value=0.22, format="%.2f")
+    st.subheader("⚡ Bivite")
+    cb = st.number_input("CAPEX Bivite (€)", value=600000)
+    secb = st.number_input("SEC Bivite (kWh/kg)", value=0.21)
 
-# --- 4. CALCOLI FINANZIARI ---
-def get_detailed_metrics(cap, sec):
-    input_kg_yr = p_shared * h_an * (o_shared / 100)
-    output_kg_yr = input_kg_yr * (1 - process_loss)
-    scarto_kg_yr = input_kg_yr * process_loss
-    
-    # --- OPEX VARIABILI ---
-    cost_raw = input_kg_yr * c_waste
-    cost_ene = input_kg_yr * sec * c_ene
-    cost_disp = scarto_kg_yr * c_disposal
-    maint_costs = cap * 0.04 # Manutenzione stimata sull'investimento
-    
-    total_opex = cost_raw + cost_ene + cost_disp + maint_costs + fixed_costs_yr
-    
-    # --- REVENUE ---
-    revenue = output_kg_yr * p_sell
-    
-    # --- MARGINI ---
-    ebitda = revenue - total_opex
-    depreciation = cap / 5 # Ammortamento 5 anni
-    ebt = ebitda - depreciation
-    
-    # Tasse e Utile Netto
-    taxes = ebt * tax_rate if ebt > 0 else 0
-    net_profit = ebt - taxes
-    
-    # Cash Flow Netto (Utile + Ammortamento)
-    cash_flow = net_profit + depreciation
-    
-    # Calcolo Payback
-    pb = cap / cash_flow if cash_flow > 0 else 0
-    return output_kg_yr/1000, ebitda, net_profit, cost_ene, pb
+# --- 4. CALCOLI ---
+kg_yr = p_shared * h_an * (o_shared / 100)
+ene_a = kg_yr * seca * c_ene
+ene_b = kg_yr * secb * c_ene
+annual_saving = ene_a - ene_b
+extra_capex = cb - ca
+years_to_recover_extra = extra_capex / annual_saving if annual_saving > 0 else 0
 
-ton_a, ebitda_a, net_a, ene_a, pb_a = get_detailed_metrics(ca, seca)
-ton_b, ebitda_b, net_b, ene_b, pb_b = get_detailed_metrics(cb, secb)
+# --- 5. GRAFICI ---
+c1, c2 = st.columns(2)
 
-# --- 5. TABELLA RISULTATI ---
-st.subheader(t['fin_comp'])
-res_df = pd.DataFrame({
-    "Voce": ["Produzione Netta", "Costo Energia Annuo", "Utile Netto (Post-Tasse)", "Payback Reale (Anni)"],
-    "Monovite": [f"{ton_a:,.0f} T", f"€ {ene_a:,.0f}", f"€ {net_a:,.0f}", f"{pb_a:.2f}"],
-    "Bivite": [f"{ton_b:,.0f} T", f"€ {ene_b:,.0f}", f"€ {net_b:,.0f}", f"{pb_b:.2f}"]
-})
-st.table(res_df)
+with c1:
+    # GRAFICO 1: WATERFALL / BARRE COSTI ENERGETICI
+    st.subheader(t["opex_chart"])
+    fig_opex = go.Figure()
+    fig_opex.add_trace(go.Bar(
+        name="Costo Energia",
+        x=["Monovite", "Bivite"],
+        y=[ene_a, ene_b],
+        marker_color=["#636EFA", "#00CC96"],
+        text=[f"€ {ene_a:,.0f}", f"€ {ene_b:,.0f}"],
+        textposition='auto'
+    ))
+    fig_opex.update_layout(yaxis_title="Euro/Anno", showlegend=False)
+    st.plotly_chart(fig_opex, use_container_width=True)
+    st.success(f"✅ Risparmio energetico annuo: **€ {annual_saving:,.0f}**")
 
-# --- 6. GRAFICO CASH FLOW ---
-yrs = list(range(11)) # Esteso a 10 anni per vedere meglio il lungo termine
-cum_a = [-ca + (net_a + ca/5) * y for y in yrs]
-cum_b = [-cb + (net_b + cb/5) * y for y in yrs]
+with c2:
+    # GRAFICO 2: RECUPERO EXTRA-INVESTIMENTO
+    st.subheader(t["extra_invest"])
+    yrs = list(range(max(1, int(years_to_recover_extra * 2)) + 2))
+    recovery = [-extra_capex + (annual_saving * y) for y in yrs]
+    
+    fig_rec = go.Figure()
+    fig_rec.add_trace(go.Scatter(
+        x=yrs, y=recovery, 
+        mode='lines+markers',
+        line=dict(color='#00CC96', width=4),
+        fill='tozeroy',
+        name="Recupero"
+    ))
+    fig_rec.add_hline(y=0, line_dash="dash", line_color="red")
+    fig_rec.update_layout(
+        xaxis_title="Anni",
+        yaxis_title="Euro (€)",
+        hovermode="x unified"
+    )
+    st.plotly_chart(fig_rec, use_container_width=True)
+    st.warning(f"⏱️ L'extra-costo di € {extra_capex:,.0f} si ripaga in **{years_to_recover_extra:.1f} anni** solo col risparmio energetico.")
 
-fig = go.Figure()
-fig.add_trace(go.Scatter(x=yrs, y=cum_a, name="Monovite", line=dict(color='blue', dash='dot')))
-fig.add_trace(go.Scatter(x=yrs, y=cum_b, name="Bivite", line=dict(color='green', width=4)))
-fig.add_hline(y=0, line_dash="dash", line_color="red")
-fig.update_layout(
-    title="Rientro dell'investimento: Cash Flow Netto Cumulativo",
-    xaxis_title="Anni",
-    yaxis_title="Euro (€)",
-    hovermode="x unified"
-)
-st.plotly_chart(fig, use_container_width=True)
-
-st.info(f"💡 Il risparmio energetico annuo della Bivite è di € {ene_a - ene_b:,.0f} rispetto alla Monovite.")
+# --- 6. DETTAGLIO ---
+st.divider()
+st.info(f"""
+**Perché la Bivite vince?**
+* **Efficienza Termica:** La bivite lavora più per conduzione che per attrito meccanico, abbattendo il SEC.
+* **Qualità:** Minore stress termico significa granulo di valore superiore (non calcolato qui, ma è un bonus).
+* **Margine:** Ogni kg prodotto con la bivite ti costa **{ (seca-secb)*c_ene :.3f} €** in meno di sola corrente.
+""")
